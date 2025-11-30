@@ -12,40 +12,53 @@ from datetime import datetime
 class AIStructuringService:
     def __init__(self):
         genai.configure(api_key=GEMINI_API_KEY)
-        self.model = genai.GenerativeModel('gemini-pro')
+        # Using flash-lite for faster responses
+        self.model = genai.GenerativeModel(
+            'gemini-2.5-flash-lite',
+            generation_config={
+                'temperature': 0.1,
+                'top_p': 1,
+                'max_output_tokens': 2048,
+            }
+        )
     
     def structure_text(self, raw_text: str, source_file: str) -> dict:
         """
         Convert raw OCR text into structured transaction data
+        Handles both receipts and CSV/Excel data
         """
         
+        # Check if this is CSV/structured data
+        if self._is_structured_data(raw_text):
+            return self._parse_structured_data(raw_text, source_file)
+        
+        # Otherwise, process as receipt/invoice
         prompt = f"""
-You are an expert bookkeeping AI. Extract transaction information from the following text.
+Extract transaction data from this receipt/invoice text.
 
-Raw Text:
-{raw_text}
+Text:
+{raw_text[:2000]}
 
-Extract and return ONLY a valid JSON object with these fields:
-- date: in YYYY-MM-DD format
-- vendor: company or merchant name
-- amount: numeric value only (no currency symbols)
-- currency: currency code (default: {DEFAULT_CURRENCY})
-- category: one of [Food, Fuel, Transport, Utilities, Rent, Office, Other]
-- notes: brief description
-- confidence: object with confidence scores (0.0-1.0) for {{vendor, amount, date, category}}
+Return ONLY valid JSON with these exact fields:
+{{"date":"YYYY-MM-DD","vendor":"name","amount":number,"currency":"{DEFAULT_CURRENCY}","category":"Food|Fuel|Transport|Utilities|Rent|Office|Other","notes":"brief note","confidence":{{"vendor":0.9,"amount":0.9,"date":0.9,"category":0.9}}}}
 
-Rules:
-- If date is unclear, use today's date and set confidence.date to 0.4
-- Fix common OCR mistakes (e.g., "12ll" → "1211")
-- If amount has multiple values, pick the total
-- Be conservative with confidence scores
-
-Return ONLY valid JSON, no markdown or explanations.
+Rules: If unclear, use today's date. Fix OCR errors. Pick total amount. Conservative confidence scores.
 """
         
         try:
-            response = self.model.generate_content(prompt)
-            result_text = response.text.strip()
+            # Add timeout and retry logic
+            import time
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self.model.generate_content(prompt)
+                    result_text = response.text.strip()
+                    break  # Success, exit retry loop
+                except Exception as e:
+                    if attempt < max_retries - 1 and ("timeout" in str(e).lower() or "504" in str(e)):
+                        time.sleep(2)  # Wait 2 seconds before retry
+                        continue
+                    raise  # Re-raise if not timeout or last attempt
             
             # Clean up markdown code blocks if present
             result_text = re.sub(r'```json\s*|\s*```', '', result_text)
@@ -62,23 +75,49 @@ Return ONLY valid JSON, no markdown or explanations.
             # Fallback: try to extract manually
             return self._manual_extraction(raw_text, source_file)
         except Exception as e:
-            return {
-                "date": datetime.now().strftime("%Y-%m-%d"),
-                "vendor": "Unknown",
-                "amount": 0.0,
-                "currency": DEFAULT_CURRENCY,
-                "category": "Other",
-                "notes": f"AI extraction failed: {str(e)}",
-                "confidence": {
-                    "vendor": 0.1,
-                    "amount": 0.1,
-                    "date": 0.1,
-                    "category": 0.1
-                },
-                "source_file": source_file,
-                "raw_text": raw_text,
-                "needs_review": True
-            }
+            return self._get_empty_result(source_file, f"AI extraction failed: {str(e)}")
+    
+    def _is_structured_data(self, text: str) -> bool:
+        """Check if text is from CSV/Excel (structured data)"""
+        # Look for common CSV patterns
+        lines = text.strip().split('\n')
+        if len(lines) < 2:
+            return False
+        
+        # Check if first line looks like headers
+        first_line = lines[0].lower()
+        csv_indicators = ['date', 'amount', 'vendor', 'description', 'price', 'total', 'category']
+        
+        # Also check for dict-like structure from pandas
+        if text.strip().startswith('{') and ':' in text:
+            return True
+        
+        return any(indicator in first_line for indicator in csv_indicators)
+    
+    def _parse_structured_data(self, text: str, source_file: str) -> dict:
+        """Parse CSV/Excel structured data"""
+        
+        # Use AI to understand the CSV structure
+        prompt = f"""
+This is structured data from a spreadsheet/CSV. Extract ONE transaction.
+
+Data:
+{text[:1500]}
+
+Return ONLY valid JSON with these exact fields:
+{{"date":"YYYY-MM-DD","vendor":"name","amount":number,"currency":"{DEFAULT_CURRENCY}","category":"Food|Fuel|Transport|Utilities|Rent|Office|Other","notes":"brief note","confidence":{{"vendor":0.8,"amount":0.9,"date":0.8,"category":0.7}}}}
+
+Look for columns like: date, vendor/merchant/name, amount/price/total, description/notes.
+"""
+        
+        try:
+            response = self.model.generate_content(prompt)
+            result_text = response.text.strip()
+            result_text = re.sub(r'```json\s*|\s*```', '', result_text)
+            structured_data = json.loads(result_text)
+            return self._validate_and_fix(structured_data, text[:500], source_file)
+        except Exception as e:
+            return self._get_empty_result(source_file, f"CSV parsing failed: {str(e)}")
     
     def _validate_and_fix(self, data: dict, raw_text: str, source_file: str) -> dict:
         """Validate and fix structured data"""
@@ -166,3 +205,23 @@ Return ONLY valid JSON, no markdown or explanations.
                 break
         
         return result
+    
+    def _get_empty_result(self, source_file: str, error_msg: str) -> dict:
+        """Return empty result structure"""
+        return {
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "vendor": "Unknown",
+            "amount": 0.0,
+            "currency": DEFAULT_CURRENCY,
+            "category": "Other",
+            "notes": error_msg,
+            "confidence": {
+                "vendor": 0.1,
+                "amount": 0.1,
+                "date": 0.1,
+                "category": 0.1
+            },
+            "source_file": source_file,
+            "raw_text": "",
+            "needs_review": True
+        }

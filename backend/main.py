@@ -67,6 +67,7 @@ async def upload_files(
     """
     Upload and process multiple files
     Returns batch processing results
+    Timeout: 300 seconds per file
     """
     results = []
     errors = []
