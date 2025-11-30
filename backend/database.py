@@ -1,0 +1,72 @@
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from datetime import datetime
+import json
+from backend.config import DATABASE_URL
+
+# Create engine
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# Database Models
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(String, nullable=False)
+    vendor = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, default="PKR")
+    category = Column(String, nullable=False)
+    notes = Column(Text, nullable=True)
+    
+    # Confidence scores stored as JSON
+    confidence_json = Column(Text, nullable=False)
+    
+    source_file = Column(String, nullable=False)
+    raw_text = Column(Text, nullable=True)
+    
+    # Duplicate detection
+    is_duplicate = Column(Boolean, default=False)
+    duplicate_of = Column(Integer, nullable=True)
+    
+    # Review flag
+    needs_review = Column(Boolean, default=False)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "date": self.date,
+            "vendor": self.vendor,
+            "amount": self.amount,
+            "currency": self.currency,
+            "category": self.category,
+            "notes": self.notes,
+            "confidence": json.loads(self.confidence_json),
+            "source_file": self.source_file,
+            "raw_text": self.raw_text,
+            "is_duplicate": self.is_duplicate,
+            "duplicate_of": self.duplicate_of,
+            "needs_review": self.needs_review,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+# Create tables
+def init_db():
+    Base.metadata.create_all(bind=engine)
+
+# Dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
