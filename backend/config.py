@@ -39,11 +39,41 @@ ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf", ".csv", ".xlsx"}
 
 # Category mapping for auto-categorization
 CATEGORY_KEYWORDS = {
-    "Food": ["kfc", "mcdonald", "restaurant", "cafe", "food", "burger", "pizza"],
-    "Fuel": ["pso", "shell", "total", "petrol", "fuel", "gas"],
-    "Transport": ["uber", "careem", "taxi", "transport", "bus", "metro"],
-    "Utilities": ["electricity", "gas", "water", "internet", "phone", "bill"],
-    "Rent": ["rent", "lease", "housing"],
-    "Office": ["stationery", "office", "supplies"],
+    "Food": [
+        # English
+        "kfc", "mcdonald", "restaurant", "cafe", "food", "burger", "pizza", "restaurant",
+        # Urdu/Roman Urdu
+        "khana", "khaane", "nashta", "dinner", "lunch", "biryani", "karahi"
+    ],
+    "Fuel": [
+        # English
+        "pso", "shell", "total", "attock", "petrol", "fuel", "gas",
+        # Urdu/Roman Urdu
+        "petrol", "diesel"
+    ],
+    "Transport": [
+        # English
+        "uber", "careem", "taxi", "transport", "bus", "metro", "rickshaw", "bykea", "indriver",
+        # Urdu/Roman Urdu
+        "sawari", "gaari"
+    ],
+    "Utilities": [
+        # English
+        "electricity", "gas", "water", "internet", "phone", "bill", "wifi", "ptcl", "nayatel",
+        # Urdu/Roman Urdu
+        "bijli", "pani", "bill"
+    ],
+    "Rent": [
+        # English
+        "rent", "lease", "housing",
+        # Urdu/Roman Urdu
+        "kiraya", "makaan"
+    ],
+    "Office": [
+        # English
+        "stationery", "office", "supplies", "printing",
+        # Urdu/Roman Urdu
+        "daftar", "kaam"
+    ],
     "Other": []
 }

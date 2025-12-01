@@ -142,7 +142,7 @@ def main():
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #666;">
-        <p>Built with ❤️ using FastAPI + Streamlit + Google Gemini AI</p>
+        <p>Made by MSF</p>
     </div>
     """, unsafe_allow_html=True)
 

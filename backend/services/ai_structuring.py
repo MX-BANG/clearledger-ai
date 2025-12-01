@@ -26,23 +26,46 @@ class AIStructuringService:
         """
         Convert raw OCR text into structured transaction data
         Handles both receipts and CSV/Excel data
+        Supports multiple languages (English, Urdu, Roman Urdu, etc.)
         """
         
         # Check if this is CSV/structured data
         if self._is_structured_data(raw_text):
             return self._parse_structured_data(raw_text, source_file)
         
-        # Otherwise, process as receipt/invoice
+        # Detect if text might be in another language and needs translation
+        detected_language = self._detect_language(raw_text)
+        
+        # Otherwise, process as receipt/invoice/message with multi-language support
         prompt = f"""
-Extract transaction data from this receipt/invoice text.
+Extract transaction data from this text. The text may be in English, Urdu, Roman Urdu, or mixed languages.
 
 Text:
 {raw_text[:2000]}
 
-Return ONLY valid JSON with these exact fields:
-{{"date":"YYYY-MM-DD","vendor":"name","amount":number,"currency":"{DEFAULT_CURRENCY}","category":"Food|Fuel|Transport|Utilities|Rent|Office|Other","notes":"brief note","confidence":{{"vendor":0.9,"amount":0.9,"date":0.9,"category":0.9}}}}
+Detected Language: {detected_language}
 
-Rules: If unclear, use today's date. Fix OCR errors. Pick total amount. Conservative confidence scores.
+Instructions:
+1. Translate/understand the text if needed
+2. Extract transaction information
+3. Common patterns to look for:
+   - "pay kiye" / "paid" = payment made
+   - "transfer" / "bheja" = money sent
+   - "received" / "mila" = money received
+   - Amount followed by person's name = payment to that person
+   - Food items, restaurant names = Food category
+   - Petrol, fuel, PSO, Shell = Fuel category
+   - Uber, Careem, taxi = Transport category
+
+Return ONLY valid JSON with these exact fields:
+{{"date":"YYYY-MM-DD","vendor":"name","amount":number,"currency":"{DEFAULT_CURRENCY}","category":"Food|Fuel|Transport|Utilities|Rent|Office|Other","notes":"brief description in English","confidence":{{"vendor":0.9,"amount":0.9,"date":0.9,"category":0.9}}}}
+
+Rules: 
+- If date is unclear, use today's date and set confidence.date to 0.4
+- Extract amount (look for numbers)
+- Identify vendor/person name
+- Translate notes to English
+- Be conservative with confidence scores
 """
         
         try:
@@ -94,6 +117,26 @@ Rules: If unclear, use today's date. Fix OCR errors. Pick total amount. Conserva
         
         return any(indicator in first_line for indicator in csv_indicators)
     
+    def _detect_language(self, text: str) -> str:
+        """Detect the language of the input text"""
+        # Simple language detection based on character patterns
+        text_sample = text[:200].lower()
+        
+        # Check for Urdu script (Unicode range)
+        urdu_chars = sum(1 for c in text_sample if '\u0600' <= c <= '\u06FF')
+        
+        # Check for Roman Urdu keywords
+        roman_urdu_keywords = ['kiye', 'bheja', 'diye', 'mila', 'ko', 'se', 'ka', 'ki', 'ne', 'usko', 'isko']
+        roman_urdu_found = sum(1 for keyword in roman_urdu_keywords if keyword in text_sample)
+        
+        # Check for common payment keywords in various languages
+        if urdu_chars > 5:
+            return "Urdu (اردو)"
+        elif roman_urdu_found >= 2:
+            return "Roman Urdu / Hinglish"
+        else:
+            return "English or Mixed"
+    
     def _parse_structured_data(self, text: str, source_file: str) -> dict:
         """Parse CSV/Excel structured data"""
         
@@ -138,17 +181,36 @@ Look for columns like: date, vendor/merchant/name, amount/price/total, descripti
             }
         }
         
+        # Track if date was missing or auto-filled
+        date_was_missing = False
+        
         for key, default_value in defaults.items():
             if key not in data:
                 data[key] = default_value
+                if key == "date":
+                    date_was_missing = True
+        
+        # Check if date looks auto-filled (today's date with low confidence)
+        today = datetime.now().strftime("%Y-%m-%d")
+        if data["date"] == today and data["confidence"]["date"] < 0.6:
+            date_was_missing = True
+            data["confidence"]["date"] = 0.3  # Lower confidence for assumed date
+            if data["notes"]:
+                data["notes"] = f"[Date assumed: {today}] {data['notes']}"
+            else:
+                data["notes"] = f"Date not found in image, assumed today's date ({today})"
         
         # Add metadata
         data["source_file"] = source_file
         data["raw_text"] = raw_text
         
-        # Determine if needs review (low confidence)
+        # Determine if needs review
         avg_confidence = sum(data["confidence"].values()) / len(data["confidence"])
-        data["needs_review"] = avg_confidence < 0.7 or data["amount"] == 0
+        data["needs_review"] = (
+            avg_confidence < 0.7 or 
+            data["amount"] == 0 or 
+            date_was_missing  # IMPORTANT: Flag for review if date was missing
+        )
         
         return data
     

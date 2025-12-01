@@ -16,7 +16,23 @@ st.title("📤 Upload Documents")
 st.markdown("""
 Upload your receipts, invoices, screenshots, or CSV/Excel files.  
 The AI will automatically extract and structure the data.
+
+**🌍 Multi-Language Support:** Works with Different Languages!
 """)
+
+# Language examples
+with st.expander("📝 See language examples"):
+    st.markdown("""
+    **English:** "Paid 500 PKR to Ali for food"
+    
+    **Roman Urdu:** "200 usko pay kiye khaane ke" → Detected as: 200 PKR paid for food
+    
+    **Urdu:** "5000 روپے سدرا کو بھیجے" → Detected as: 5000 PKR sent to Sidra
+    
+    **Mixed:** "5,000 transferred to Sidra by Sadapay" → Detected as: Transfer to Sidra
+    
+    The AI understands context and translates automatically! 🎯
+    """)
 
 # File uploader
 uploaded_files = st.file_uploader(
@@ -83,6 +99,15 @@ if uploaded_files:
                                     st.write("**Amount:**", f"{entry['amount']} {entry['currency']}")
                                     st.write("**Category:**", entry['category'])
                                     st.write("**Notes:**", entry.get('notes', 'N/A'))
+                                    
+                                    # Show language detection if available in raw_text
+                                    if entry.get('raw_text'):
+                                        raw_preview = entry['raw_text'][:100]
+                                        # Detect language
+                                        if any(keyword in raw_preview.lower() for keyword in ['kiye', 'bheja', 'usko', 'ko']):
+                                            st.caption("🌍 Language: Roman Urdu/Hinglish detected")
+                                        elif any('\u0600' <= c <= '\u06FF' for c in raw_preview):
+                                            st.caption("🌍 Language: Urdu (اردو) detected")
                                 
                                 with col2:
                                     st.write("**Confidence Scores:**")

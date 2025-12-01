@@ -6,6 +6,7 @@ Review and edit extracted transactions
 import streamlit as st
 import requests
 import pandas as pd
+import time
 
 st.set_page_config(page_title="Review Transactions", page_icon="✏️", layout="wide")
 
@@ -200,19 +201,103 @@ try:
         st.markdown("---")
         st.markdown("### 🔧 Bulk Actions")
         
-        col1, col2, col3 = st.columns(3)
+        # Count duplicates
+        duplicates_count = sum(1 for t in transactions if t.get('is_duplicate', False))
+        needs_review_count = sum(1 for t in transactions if t.get('needs_review', False))
+        total_count = len(transactions)
+        
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            if st.button("✅ Mark All as Reviewed"):
-                st.info("Feature coming soon!")
+            st.markdown(f"**{needs_review_count}** items need review")
+            if st.button("✅ Mark All as Reviewed", use_container_width=True, disabled=(needs_review_count == 0)):
+                with st.spinner("Marking all as reviewed..."):
+                    try:
+                        response = requests.post(f"{API_URL}/bulk/mark-reviewed")
+                        if response.status_code == 200:
+                            result = response.json()
+                            st.success(f"✅ {result['message']}")
+                            st.balloons()
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Error: {response.text}")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
         
         with col2:
-            if st.button("🗑️ Delete All Duplicates"):
-                st.info("Feature coming soon!")
+            st.markdown(f"**{duplicates_count}** duplicate(s) found")
+            if duplicates_count > 0:
+                if st.button("🗑️ Delete All Duplicates", use_container_width=True, type="secondary"):
+                    st.session_state['confirm_delete_duplicates'] = True
+                
+                # Show confirmation if button clicked
+                if st.session_state.get('confirm_delete_duplicates', False):
+                    st.warning(f"⚠️ About to delete {duplicates_count} duplicate transaction(s). IDs will be reordered!")
+                    
+                    col_cancel, col_confirm = st.columns(2)
+                    
+                    with col_cancel:
+                        if st.button("❌ Cancel", key="cancel_dup", use_container_width=True):
+                            st.session_state['confirm_delete_duplicates'] = False
+                            st.rerun()
+                    
+                    with col_confirm:
+                        if st.button("🔴 Confirm Delete", key="confirm_dup", use_container_width=True, type="primary"):
+                            with st.spinner("Deleting duplicates..."):
+                                try:
+                                    response = requests.post(f"{API_URL}/bulk/delete-duplicates")
+                                    if response.status_code == 200:
+                                        result = response.json()
+                                        st.success(f"✅ {result['message']}")
+                                        st.session_state['confirm_delete_duplicates'] = False
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ Error: {response.text}")
+                                except Exception as e:
+                                    st.error(f"❌ Error: {str(e)}")
+            else:
+                st.button("🗑️ Delete All Duplicates", use_container_width=True, disabled=True)
+                st.caption("No duplicates found")
         
         with col3:
-            if st.button("📥 Export to CSV"):
-                st.info("Go to Export page to download data!")
+            st.markdown("**Export your data**")
+            if st.button("📥 Go to Export Page", use_container_width=True):
+                st.switch_page("pages/4_💾_Export.py")
+        
+        with col4:
+            st.markdown(f"**{total_count}** total transactions")
+            if st.button("🔴 Delete ALL Data", use_container_width=True, type="secondary"):
+                st.session_state['confirm_delete_all'] = True
+            
+            # Show confirmation for delete all
+            if st.session_state.get('confirm_delete_all', False):
+                st.error(f"⚠️ DANGER: About to delete ALL {total_count} transactions! This cannot be undone!")
+                
+                col_cancel, col_confirm = st.columns(2)
+                
+                with col_cancel:
+                    if st.button("❌ Cancel", key="cancel_all", use_container_width=True):
+                        st.session_state['confirm_delete_all'] = False
+                        st.rerun()
+                
+                with col_confirm:
+                    if st.button("💀 YES, DELETE EVERYTHING", key="confirm_all", use_container_width=True, type="primary"):
+                        with st.spinner("Deleting all transactions..."):
+                            try:
+                                response = requests.post(f"{API_URL}/bulk/delete-all")
+                                if response.status_code == 200:
+                                    result = response.json()
+                                    st.success(f"✅ {result['message']}")
+                                    st.info("🎯 Database reset. You can start fresh!")
+                                    st.session_state['confirm_delete_all'] = False
+                                    time.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Error: {response.text}")
+                            except Exception as e:
+                                st.error(f"❌ Error: {str(e)}")
     
     else:
         st.error(f"❌ Error fetching transactions: {response.status_code}")

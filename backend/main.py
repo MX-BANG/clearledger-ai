@@ -114,6 +114,16 @@ async def process_single_file(file_path: Path, db: Session) -> TransactionEntry:
     if not ocr_result["success"]:
         raise Exception(ocr_result["error"])
     
+    # Check if CSV/Excel with dataframe
+    if "dataframe" in ocr_result:
+        # For CSV/Excel, process first row only (for MVP)
+        # TODO: In production, process all rows
+        df = ocr_result["dataframe"]
+        if len(df) > 0:
+            # Convert first row to text
+            first_row = df.iloc[0].to_dict()
+            ocr_result["raw_text"] = str(first_row)
+    
     # MVP 2: Structure data with AI
     structured_data = ai_service.structure_text(
         ocr_result["raw_text"],
@@ -196,16 +206,39 @@ async def update_transaction(
 
 @app.delete("/transactions/{transaction_id}")
 async def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
-    """Delete a transaction"""
+    """Delete a transaction and reorder IDs"""
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
     
+    # Delete the transaction
     db.delete(transaction)
     db.commit()
     
-    return {"message": "Transaction deleted"}
+    # Reorder IDs: Get all remaining transactions ordered by ID
+    remaining_transactions = db.query(Transaction).order_by(Transaction.id).all()
+    
+    # Reassign sequential IDs starting from 1
+    for new_id, trans in enumerate(remaining_transactions, start=1):
+        if trans.id != new_id:
+            # Update ID
+            trans.id = new_id
+    
+    db.commit()
+    
+    # Reset the auto-increment counter
+    # For SQLite
+    db.execute("DELETE FROM sqlite_sequence WHERE name='transactions'")
+    if remaining_transactions:
+        db.execute(f"INSERT INTO sqlite_sequence (name, seq) VALUES ('transactions', {len(remaining_transactions)})")
+    db.commit()
+    
+    return {
+        "message": "Transaction deleted and IDs reordered",
+        "deleted_id": transaction_id,
+        "remaining_count": len(remaining_transactions)
+    }
 
 @app.post("/export")
 async def export_transactions(
@@ -231,6 +264,74 @@ async def export_transactions(
         "message": "Export successful",
         "file_path": file_path,
         "total_entries": len(entries)
+    }
+
+@app.post("/bulk/mark-reviewed")
+async def bulk_mark_reviewed(db: Session = Depends(get_db)):
+    """Mark all transactions as reviewed (remove needs_review flag)"""
+    
+    transactions = db.query(Transaction).filter(Transaction.needs_review == True).all()
+    count = len(transactions)
+    
+    for transaction in transactions:
+        transaction.needs_review = False
+    
+    db.commit()
+    
+    return {
+        "message": f"Marked {count} transaction(s) as reviewed",
+        "count": count
+    }
+
+@app.post("/bulk/delete-duplicates")
+async def bulk_delete_duplicates(db: Session = Depends(get_db)):
+    """Delete all transactions marked as duplicates"""
+    
+    duplicates = db.query(Transaction).filter(Transaction.is_duplicate == True).all()
+    count = len(duplicates)
+    
+    for duplicate in duplicates:
+        db.delete(duplicate)
+    
+    db.commit()
+    
+    # Reorder remaining IDs
+    remaining_transactions = db.query(Transaction).order_by(Transaction.id).all()
+    for new_id, trans in enumerate(remaining_transactions, start=1):
+        if trans.id != new_id:
+            trans.id = new_id
+    
+    # Reset auto-increment
+    db.execute("DELETE FROM sqlite_sequence WHERE name='transactions'")
+    if remaining_transactions:
+        db.execute(f"INSERT INTO sqlite_sequence (name, seq) VALUES ('transactions', {len(remaining_transactions)})")
+    db.commit()
+    
+    return {
+        "message": f"Deleted {count} duplicate transaction(s)",
+        "count": count
+    }
+
+@app.post("/bulk/delete-all")
+async def bulk_delete_all(db: Session = Depends(get_db)):
+    """Delete ALL transactions - DANGEROUS! Start fresh"""
+    
+    all_transactions = db.query(Transaction).all()
+    count = len(all_transactions)
+    
+    # Delete all
+    for transaction in all_transactions:
+        db.delete(transaction)
+    
+    db.commit()
+    
+    # Reset auto-increment counter to 0
+    db.execute("DELETE FROM sqlite_sequence WHERE name='transactions'")
+    db.commit()
+    
+    return {
+        "message": f"Deleted all {count} transaction(s). Database reset.",
+        "count": count
     }
 
 @app.get("/dashboard", response_model=DashboardStats)
