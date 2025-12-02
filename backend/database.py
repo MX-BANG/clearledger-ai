@@ -14,35 +14,38 @@ Base = declarative_base()
 
 class Transaction(Base):
     __tablename__ = "transactions"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     date = Column(String, nullable=False)
     vendor = Column(String, nullable=False)
-    
+
     # Split amount into income and expense
     income = Column(Float, default=0.0)
     expense = Column(Float, default=0.0)
-    
+
     currency = Column(String, default="PKR")
     category = Column(String, nullable=False)
     notes = Column(Text, nullable=True)
-    
+
     # Transaction type
     transaction_type = Column(String, default="expense")  # "income" or "expense"
-    
+
     # Confidence scores stored as JSON
     confidence_json = Column(Text, nullable=False)
-    
+
     source_file = Column(String, nullable=False)
     raw_text = Column(Text, nullable=True)
-    
+
     # Duplicate detection
     is_duplicate = Column(Boolean, default=False)
     duplicate_of = Column(Integer, nullable=True)
-    
+
     # Review flag
     needs_review = Column(Boolean, default=False)
-    
+
+    # Remaining balance calculation
+    remaining_balance = Column(Float, default=0.0)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -52,6 +55,7 @@ class Transaction(Base):
             "id": self.id,
             "date": self.date,
             "vendor": self.vendor,
+            "amount": self.income - self.expense,
             "income": self.income,
             "expense": self.expense,
             "currency": self.currency,
@@ -64,6 +68,7 @@ class Transaction(Base):
             "is_duplicate": self.is_duplicate,
             "duplicate_of": self.duplicate_of,
             "needs_review": self.needs_review,
+            "remaining_balance": self.remaining_balance,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }

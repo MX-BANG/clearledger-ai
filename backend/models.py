@@ -14,6 +14,7 @@ class TransactionEntry(BaseModel):
     id: Optional[int] = None
     date: str
     vendor: str
+    amount: float = 0.0
     income: float = 0.0
     expense: float = 0.0
     transaction_type: str = "expense"
@@ -26,6 +27,7 @@ class TransactionEntry(BaseModel):
     is_duplicate: bool = False
     duplicate_of: Optional[int] = None
     needs_review: bool = False
+    remaining_balance: float = 0.0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

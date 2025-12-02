@@ -36,6 +36,9 @@ class AIStructuringService:
         # Detect if text might be in another language and needs translation
         detected_language = self._detect_language(raw_text)
         
+        # Get today's date for explicit use in prompt
+        today_date = datetime.now().strftime("%Y-%m-%d")
+
         # Otherwise, process as receipt/invoice/message with multi-language support
         prompt = f"""
 Extract transaction data from this text. The text may be in English, Urdu, Roman Urdu, or mixed languages.
@@ -62,8 +65,11 @@ Instructions:
 Return ONLY valid JSON with these exact fields:
 {{"date":"YYYY-MM-DD","vendor":"name","amount":number,"transaction_type":"income|expense","currency":"{DEFAULT_CURRENCY}","category":"Food|Fuel|Transport|Utilities|Rent|Office|Salary|Other","notes":"brief description in English","confidence":{{"vendor":0.9,"amount":0.9,"date":0.9,"category":0.9,"transaction_type":0.9}}}}
 
-Rules: 
-- If date is unclear, use today's date and set confidence.date to 0.4
+Rules:
+- **CRITICAL DATE RULE: Only use dates that are EXPLICITLY present in the text**
+- **If NO date appears anywhere in the text, use today's upload date: {today_date} and set confidence.date to 0.3**
+- Do NOT assume, guess, or hallucinate any dates (including 2023, 2024, or any other year)
+- Do NOT infer dates from context, file names, or metadata
 - Extract amount (look for numbers)
 - Identify vendor/person name
 - **MUST classify as income or expense**
@@ -142,7 +148,10 @@ Rules:
     
     def _parse_structured_data(self, text: str, source_file: str) -> dict:
         """Parse CSV/Excel structured data"""
-        
+
+        # Get today's date for explicit use in prompt
+        today_date = datetime.now().strftime("%Y-%m-%d")
+
         # Use AI to understand the CSV structure
         prompt = f"""
 This is structured data from a spreadsheet/CSV. Extract ONE transaction.
@@ -153,7 +162,11 @@ Data:
 Return ONLY valid JSON with these exact fields:
 {{"date":"YYYY-MM-DD","vendor":"name","amount":number,"currency":"{DEFAULT_CURRENCY}","category":"Food|Fuel|Transport|Utilities|Rent|Office|Other","notes":"brief note","confidence":{{"vendor":0.8,"amount":0.9,"date":0.8,"category":0.7}}}}
 
-Look for columns like: date, vendor/merchant/name, amount/price/total, description/notes.
+Rules:
+- **IMPORTANT: If NO date is found in the data, use today's date: {today_date} and set confidence.date to 0.3**
+- Only extract dates that are explicitly present in the data
+- Do NOT assume or hallucinate dates
+- Look for columns like: date, vendor/merchant/name, amount/price/total, description/notes.
 """
         
         try:

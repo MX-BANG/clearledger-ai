@@ -68,21 +68,44 @@ def update_balance(db: Session, transaction: Transaction = None):
 def recalculate_balance(db: Session):
     """Recalculate balance from scratch"""
     balance = db.query(Balance).first()
-    
+
     if not balance:
         balance = Balance(opening_balance=0.0)
         db.add(balance)
-    
+
     all_trans = db.query(Transaction).all()
     total_income = sum(t.income for t in all_trans)
     total_expense = sum(t.expense for t in all_trans)
-    
+
     balance.total_income = total_income
     balance.total_expense = total_expense
     balance.current_balance = balance.opening_balance + total_income - total_expense
-    
+
     db.commit()
     return balance
+
+def recalculate_remaining_balances(db: Session):
+    """Recalculate remaining balance for all transactions based on starting balance"""
+    balance = db.query(Balance).first()
+    opening_balance = balance.opening_balance if balance else 0.0
+
+    # Get all transactions ordered by date and id
+    transactions = db.query(Transaction).order_by(Transaction.date, Transaction.id).all()
+
+    current_balance = opening_balance
+
+    for transaction in transactions:
+        # Calculate balance after this transaction
+        current_balance += transaction.income - transaction.expense
+        # Set remaining balance after this transaction
+        transaction.remaining_balance = current_balance
+
+    db.commit()
+
+    # Update the balance table's current_balance
+    if balance:
+        balance.current_balance = current_balance
+        db.commit()
 
 @app.on_event("startup")
 async def startup_event():
@@ -102,6 +125,7 @@ async def root():
 @app.post("/upload", response_model=BatchProcessingResult)
 async def upload_files(
     files: List[UploadFile] = File(...),
+    starting_balance: float = 0.0,
     db: Session = Depends(get_db)
 ):
     """
@@ -109,9 +133,17 @@ async def upload_files(
     Returns batch processing results
     Timeout: 300 seconds per file
     """
+    # Set starting balance
+    balance = db.query(Balance).first()
+    if not balance:
+        balance = Balance()
+        db.add(balance)
+    balance.opening_balance = starting_balance
+    db.commit()
+
     results = []
     errors = []
-    
+
     for file in files:
         try:
             # Validate file extension
@@ -122,22 +154,25 @@ async def upload_files(
                     "error": f"Unsupported file type: {file_ext}"
                 })
                 continue
-            
+
             # Save uploaded file
             file_path = UPLOAD_DIR / file.filename
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
-            
+
             # Process file
             entry = await process_single_file(file_path, db)
             results.append(entry)
-            
+
         except Exception as e:
             errors.append({
                 "filename": file.filename,
                 "error": str(e)
             })
-    
+
+    # Recalculate remaining balances after all transactions are processed
+    recalculate_remaining_balances(db)
+
     return BatchProcessingResult(
         total_files=len(files),
         successful=len(results),
@@ -262,7 +297,10 @@ async def create_manual_transaction(
     
     # Update balance
     update_balance(db, transaction)
-    
+
+    # Recalculate remaining balances
+    recalculate_remaining_balances(db)
+
     return {"message": "Transaction created", "transaction": transaction.to_dict()}
 
 @app.get("/transactions", response_model=List[TransactionEntry])
@@ -312,10 +350,13 @@ async def update_transaction(
     
     db.commit()
     db.refresh(transaction)
-    
+
     # Update balance
     update_balance(db)
-    
+
+    # Recalculate remaining balances
+    recalculate_remaining_balances(db)
+
     return {"message": "Transaction updated", "transaction": transaction.to_dict()}
 
 @app.delete("/transactions/{transaction_id}")
@@ -456,13 +497,16 @@ async def set_opening_balance(opening_balance: float, db: Session = Depends(get_
     if not balance:
         balance = Balance()
         db.add(balance)
-    
+
     balance.opening_balance = opening_balance
     db.commit()
-    
+
     # Recalculate current balance
     recalculate_balance(db)
-    
+
+    # Recalculate remaining balances for all transactions
+    recalculate_remaining_balances(db)
+
     return {"message": "Opening balance set", "balance": balance.to_dict()}
 
 @app.post("/export")
@@ -471,20 +515,20 @@ async def export_transactions(
     db: Session = Depends(get_db)
 ):
     """Export transactions (MVP 7)"""
-    
-    # Get transactions
+
+    # Get transactions (ordered by date and id to match remaining balance calculation)
     if export_request.entry_ids:
         transactions = db.query(Transaction).filter(
             Transaction.id.in_(export_request.entry_ids)
-        ).all()
+        ).order_by(Transaction.date, Transaction.id).all()
     else:
-        transactions = db.query(Transaction).all()
-    
+        transactions = db.query(Transaction).order_by(Transaction.date, Transaction.id).all()
+
     entries = [t.to_dict() for t in transactions]
-    
+
     # Export
     file_path = Exporter.export(entries, export_request.format)
-    
+
     return {
         "message": "Export successful",
         "file_path": file_path,

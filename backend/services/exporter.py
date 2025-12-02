@@ -27,33 +27,25 @@ class Exporter:
             flat_entry = {
                 "Date": entry.get("date"),
                 "Vendor": entry.get("vendor"),
+                "Category": entry.get("category"),
                 "Income": entry.get("income", 0.0),
                 "Expense": entry.get("expense", 0.0),
-                "Type": entry.get("transaction_type", "expense"),
-                "Currency": entry.get("currency"),
-                "Category": entry.get("category"),
-                "Notes": entry.get("notes", ""),
-                "Source File": entry.get("source_file", ""),
-                "Needs Review": entry.get("needs_review", False),
-                "Is Duplicate": entry.get("is_duplicate", False)
+                "Remaining Balance": entry.get("remaining_balance") or 0.0,
+                "Notes": entry.get("notes", "")
             }
             flat_entries.append(flat_entry)
-        
+
         df = pd.DataFrame(flat_entries)
-        
+
         # Add summary row
         summary = {
             "Date": "TOTAL",
             "Vendor": "",
+            "Category": "",
             "Income": df["Income"].sum(),
             "Expense": df["Expense"].sum(),
-            "Type": "",
-            "Currency": "PKR",
-            "Category": "",
-            "Notes": f"Balance: {df['Income'].sum() - df['Expense'].sum()}",
-            "Source File": "",
-            "Needs Review": "",
-            "Is Duplicate": ""
+            "Remaining Balance": "",
+            "Notes": f"Balance: {df['Income'].sum() - df['Expense'].sum()}"
         }
         df = pd.concat([df, pd.DataFrame([summary])], ignore_index=True)
         
@@ -78,33 +70,24 @@ class Exporter:
             flat_entry = {
                 "Date": entry.get("date"),
                 "Vendor": entry.get("vendor"),
+                "Category": entry.get("category"),
                 "Income": entry.get("income", 0.0),
                 "Expense": entry.get("expense", 0.0),
-                "Type": entry.get("transaction_type", "expense"),
-                "Currency": entry.get("currency"),
-                "Category": entry.get("category"),
-                "Notes": entry.get("notes", ""),
-                "Vendor Confidence": entry.get("confidence", {}).get("vendor", 0),
-                "Amount Confidence": entry.get("confidence", {}).get("amount", 0),
-                "Date Confidence": entry.get("confidence", {}).get("date", 0),
-                "Category Confidence": entry.get("confidence", {}).get("category", 0),
-                "Source File": entry.get("source_file", ""),
-                "Needs Review": entry.get("needs_review", False),
-                "Is Duplicate": entry.get("is_duplicate", False)
+                "Remaining Balance": entry.get("remaining_balance", 0.0),
+                "Notes": entry.get("notes", "")
             }
             flat_entries.append(flat_entry)
-        
+
         df = pd.DataFrame(flat_entries)
-        
+
         # Add summary
         summary = {
             "Date": "TOTAL",
             "Vendor": "",
+            "Category": "",
             "Income": df["Income"].sum(),
             "Expense": df["Expense"].sum(),
-            "Type": "Balance",
-            "Currency": "PKR",
-            "Category": "",
+            "Remaining Balance": "",
             "Notes": f"Net: {df['Income'].sum() - df['Expense'].sum()}"
         }
         summary_df = pd.DataFrame([summary])
@@ -204,3 +187,4 @@ class Exporter:
                 "to": df['date'].max() if 'date' in df else None
             }
         }
+

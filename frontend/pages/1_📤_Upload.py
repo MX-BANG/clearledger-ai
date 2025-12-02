@@ -94,12 +94,12 @@ uploaded_files = st.file_uploader(
 
 if uploaded_files:
     st.info(f"📁 {len(uploaded_files)} file(s) selected")
-    
+
     # Show file details
     with st.expander("View uploaded files"):
         for file in uploaded_files:
             st.write(f"- {file.name} ({file.size / 1024:.2f} KB)")
-    
+
     # Process button
     if st.button("🚀 Process Files", type="primary"):
         
@@ -111,10 +111,11 @@ if uploaded_files:
                     for file in uploaded_files
                 ]
                 
-                # Send to API
+                data = {}
                 response = requests.post(
                     f"{API_URL}/upload",
                     files=files,
+                    data=data,
                     timeout=300  # 5 minutes timeout
                 )
                 

@@ -166,7 +166,7 @@ try:
         
         with col3:
             if st.button("💾 Export Data", use_container_width=True):
-                st.switch_page("pages/4_💾_Export.py")
+                st.switch_page("pages/5_💾_Export.py")
         
 except Exception as e:
     st.error(f"❌ Error loading balance: {str(e)}")
