@@ -49,8 +49,9 @@ class DuplicateDetector:
         scores = {}
         
         # Amount similarity (exact match gets 100, within 5% gets partial score)
-        amount1 = entry1.get("amount", 0)
-        amount2 = entry2.get("amount", 0)
+        # Handle both old 'amount' field and new 'income'/'expense' fields
+        amount1 = entry1.get("amount", 0) or entry1.get("income", 0) or entry1.get("expense", 0)
+        amount2 = entry2.get("amount", 0) or entry2.get("income", 0) or entry2.get("expense", 0)
         
         if amount1 == amount2:
             scores["amount"] = 100

@@ -11,7 +11,7 @@ import shutil
 from pathlib import Path
 import json
 
-from backend.database import init_db, get_db, Transaction
+from backend.database import init_db, get_db, Transaction, Balance
 from backend.config import UPLOAD_DIR, ALLOWED_EXTENSIONS
 from backend.models import TransactionEntry, BatchProcessingResult, ExportRequest, DashboardStats
 from backend.services.ocr_service import OCRService
@@ -43,6 +43,46 @@ init_db()
 # Initialize services
 ocr_service = OCRService()
 ai_service = AIStructuringService()
+
+# Balance helper functions
+def update_balance(db: Session, transaction: Transaction = None):
+    """Update balance after adding/deleting transaction"""
+    balance = db.query(Balance).first()
+    
+    if not balance:
+        # Create initial balance
+        balance = Balance(opening_balance=0.0, current_balance=0.0)
+        db.add(balance)
+    
+    # Recalculate totals
+    all_trans = db.query(Transaction).all()
+    total_income = sum(t.income for t in all_trans)
+    total_expense = sum(t.expense for t in all_trans)
+    
+    balance.total_income = total_income
+    balance.total_expense = total_expense
+    balance.current_balance = balance.opening_balance + total_income - total_expense
+    
+    db.commit()
+
+def recalculate_balance(db: Session):
+    """Recalculate balance from scratch"""
+    balance = db.query(Balance).first()
+    
+    if not balance:
+        balance = Balance(opening_balance=0.0)
+        db.add(balance)
+    
+    all_trans = db.query(Transaction).all()
+    total_income = sum(t.income for t in all_trans)
+    total_expense = sum(t.expense for t in all_trans)
+    
+    balance.total_income = total_income
+    balance.total_expense = total_expense
+    balance.current_balance = balance.opening_balance + total_income - total_expense
+    
+    db.commit()
+    return balance
 
 @app.on_event("startup")
 async def startup_event():
@@ -117,7 +157,6 @@ async def process_single_file(file_path: Path, db: Session) -> TransactionEntry:
     # Check if CSV/Excel with dataframe
     if "dataframe" in ocr_result:
         # For CSV/Excel, process first row only (for MVP)
-        # TODO: In production, process all rows
         df = ocr_result["dataframe"]
         if len(df) > 0:
             # Convert first row to text
@@ -147,7 +186,9 @@ async def process_single_file(file_path: Path, db: Session) -> TransactionEntry:
     transaction = Transaction(
         date=structured_data["date"],
         vendor=structured_data["vendor"],
-        amount=structured_data["amount"],
+        income=structured_data.get("income", 0.0),
+        expense=structured_data.get("expense", 0.0),
+        transaction_type=structured_data.get("transaction_type", "expense"),
         currency=structured_data["currency"],
         category=structured_data["category"],
         notes=structured_data.get("notes", ""),
@@ -163,8 +204,66 @@ async def process_single_file(file_path: Path, db: Session) -> TransactionEntry:
     db.commit()
     db.refresh(transaction)
     
+    # Update balance
+    update_balance(db, transaction)
+    
     # Convert to response model
     return TransactionEntry(**transaction.to_dict())
+
+@app.post("/transactions/manual")
+async def create_manual_transaction(
+    date: str,
+    description: str,
+    amount: float,
+    transaction_type: str,  # "income" or "expense"
+    category: str = "Other",
+    db: Session = Depends(get_db)
+):
+    """Manually add a transaction"""
+    
+    # Determine income/expense
+    income = amount if transaction_type == "income" else 0.0
+    expense = amount if transaction_type == "expense" else 0.0
+    
+    transaction = Transaction(
+        date=date,
+        vendor="Manual Entry",
+        income=income,
+        expense=expense,
+        transaction_type=transaction_type,
+        currency="PKR",
+        category=category,
+        notes=description,
+        confidence_json=json.dumps({
+            "vendor": 1.0,
+            "amount": 1.0,
+            "date": 1.0,
+            "category": 1.0,
+            "transaction_type": 1.0
+        }),
+        source_file="Manual Entry",
+        raw_text=description,
+        needs_review=False
+    )
+    
+    db.add(transaction)
+    db.commit()
+    db.refresh(transaction)
+    
+    # Check for duplicates
+    existing_entries = db.query(Transaction).filter(Transaction.id != transaction.id).all()
+    existing_dicts = [e.to_dict() for e in existing_entries]
+    duplicates = DuplicateDetector.find_duplicates(transaction.to_dict(), existing_dicts)
+    
+    if duplicates:
+        transaction.is_duplicate = True
+        transaction.duplicate_of = duplicates[0]["entry_id"]
+        db.commit()
+    
+    # Update balance
+    update_balance(db, transaction)
+    
+    return {"message": "Transaction created", "transaction": transaction.to_dict()}
 
 @app.get("/transactions", response_model=List[TransactionEntry])
 async def get_transactions(
@@ -196,11 +295,26 @@ async def update_transaction(
     
     # Update fields
     for key, value in updated_data.items():
-        if hasattr(transaction, key):
+        if hasattr(transaction, key) and key != 'id':
             setattr(transaction, key, value)
+    
+    # Handle income/expense split if amount or type changed
+    if 'amount' in updated_data or 'transaction_type' in updated_data:
+        amount = updated_data.get('amount', transaction.income + transaction.expense)
+        trans_type = updated_data.get('transaction_type', transaction.transaction_type)
+        
+        if trans_type == 'income':
+            transaction.income = amount
+            transaction.expense = 0.0
+        else:
+            transaction.income = 0.0
+            transaction.expense = amount
     
     db.commit()
     db.refresh(transaction)
+    
+    # Update balance
+    update_balance(db)
     
     return {"message": "Transaction updated", "transaction": transaction.to_dict()}
 
@@ -214,56 +328,33 @@ async def delete_transaction(transaction_id: int, db: Session = Depends(get_db))
     
     # Delete the transaction
     db.delete(transaction)
-    db.commit()
+    db.flush()  # Important: flush before reordering
     
-    # Reorder IDs: Get all remaining transactions ordered by ID
+    # Reorder IDs
     remaining_transactions = db.query(Transaction).order_by(Transaction.id).all()
     
-    # Reassign sequential IDs starting from 1
     for new_id, trans in enumerate(remaining_transactions, start=1):
         if trans.id != new_id:
-            # Update ID
             trans.id = new_id
     
     db.commit()
     
-    # Reset the auto-increment counter
-    # For SQLite
-    db.execute("DELETE FROM sqlite_sequence WHERE name='transactions'")
-    if remaining_transactions:
-        db.execute(f"INSERT INTO sqlite_sequence (name, seq) VALUES ('transactions', {len(remaining_transactions)})")
-    db.commit()
+    # Reset auto-increment
+    try:
+        db.execute("DELETE FROM sqlite_sequence WHERE name='transactions'")
+        if remaining_transactions:
+            db.execute(f"INSERT INTO sqlite_sequence (name, seq) VALUES ('transactions', {len(remaining_transactions)})")
+        db.commit()
+    except:
+        pass  # Ignore if fails
+    
+    # Update balance
+    recalculate_balance(db)
     
     return {
         "message": "Transaction deleted and IDs reordered",
         "deleted_id": transaction_id,
         "remaining_count": len(remaining_transactions)
-    }
-
-@app.post("/export")
-async def export_transactions(
-    export_request: ExportRequest,
-    db: Session = Depends(get_db)
-):
-    """Export transactions (MVP 7)"""
-    
-    # Get transactions
-    if export_request.entry_ids:
-        transactions = db.query(Transaction).filter(
-            Transaction.id.in_(export_request.entry_ids)
-        ).all()
-    else:
-        transactions = db.query(Transaction).all()
-    
-    entries = [t.to_dict() for t in transactions]
-    
-    # Export
-    file_path = Exporter.export(entries, export_request.format)
-    
-    return {
-        "message": "Export successful",
-        "file_path": file_path,
-        "total_entries": len(entries)
     }
 
 @app.post("/bulk/mark-reviewed")
@@ -293,7 +384,7 @@ async def bulk_delete_duplicates(db: Session = Depends(get_db)):
     for duplicate in duplicates:
         db.delete(duplicate)
     
-    db.commit()
+    db.flush()
     
     # Reorder remaining IDs
     remaining_transactions = db.query(Transaction).order_by(Transaction.id).all()
@@ -302,10 +393,17 @@ async def bulk_delete_duplicates(db: Session = Depends(get_db)):
             trans.id = new_id
     
     # Reset auto-increment
-    db.execute("DELETE FROM sqlite_sequence WHERE name='transactions'")
-    if remaining_transactions:
-        db.execute(f"INSERT INTO sqlite_sequence (name, seq) VALUES ('transactions', {len(remaining_transactions)})")
+    try:
+        db.execute("DELETE FROM sqlite_sequence WHERE name='transactions'")
+        if remaining_transactions:
+            db.execute(f"INSERT INTO sqlite_sequence (name, seq) VALUES ('transactions', {len(remaining_transactions)})")
+    except:
+        pass
+    
     db.commit()
+    
+    # Update balance
+    recalculate_balance(db)
     
     return {
         "message": f"Deleted {count} duplicate transaction(s)",
@@ -326,12 +424,71 @@ async def bulk_delete_all(db: Session = Depends(get_db)):
     db.commit()
     
     # Reset auto-increment counter to 0
-    db.execute("DELETE FROM sqlite_sequence WHERE name='transactions'")
-    db.commit()
+    try:
+        db.execute("DELETE FROM sqlite_sequence WHERE name='transactions'")
+        db.commit()
+    except:
+        pass
+    
+    # Reset balance
+    recalculate_balance(db)
     
     return {
         "message": f"Deleted all {count} transaction(s). Database reset.",
         "count": count
+    }
+
+@app.get("/balance")
+async def get_balance(db: Session = Depends(get_db)):
+    """Get current balance"""
+    balance = db.query(Balance).first()
+    if not balance:
+        balance = Balance(opening_balance=0.0)
+        db.add(balance)
+        db.commit()
+        db.refresh(balance)
+    return balance.to_dict()
+
+@app.post("/balance/set-opening")
+async def set_opening_balance(opening_balance: float, db: Session = Depends(get_db)):
+    """Set opening balance"""
+    balance = db.query(Balance).first()
+    if not balance:
+        balance = Balance()
+        db.add(balance)
+    
+    balance.opening_balance = opening_balance
+    db.commit()
+    
+    # Recalculate current balance
+    recalculate_balance(db)
+    
+    return {"message": "Opening balance set", "balance": balance.to_dict()}
+
+@app.post("/export")
+async def export_transactions(
+    export_request: ExportRequest,
+    db: Session = Depends(get_db)
+):
+    """Export transactions (MVP 7)"""
+    
+    # Get transactions
+    if export_request.entry_ids:
+        transactions = db.query(Transaction).filter(
+            Transaction.id.in_(export_request.entry_ids)
+        ).all()
+    else:
+        transactions = db.query(Transaction).all()
+    
+    entries = [t.to_dict() for t in transactions]
+    
+    # Export
+    file_path = Exporter.export(entries, export_request.format)
+    
+    return {
+        "message": "Export successful",
+        "file_path": file_path,
+        "total_entries": len(entries)
     }
 
 @app.get("/dashboard", response_model=DashboardStats)
@@ -356,7 +513,11 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
     clean_entries = sum(1 for e in entries if not e["needs_review"])
     flagged_entries = sum(1 for e in entries if e["needs_review"])
     duplicates = sum(1 for e in entries if e["is_duplicate"])
-    total_amount = sum(e["amount"] for e in entries)
+    
+    # Calculate total as net (income - expense)
+    total_income = sum(e.get("income", 0) for e in entries)
+    total_expense = sum(e.get("expense", 0) for e in entries)
+    total_amount = total_income - total_expense
     
     # Category breakdown
     category_breakdown = {}

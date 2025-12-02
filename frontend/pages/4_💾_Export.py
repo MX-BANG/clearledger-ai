@@ -81,7 +81,9 @@ try:
                 {
                     'Date': t['date'],
                     'Vendor': t['vendor'],
-                    'Amount': t['amount'],
+                    'Income': t.get('income', 0),
+                    'Expense': t.get('expense', 0),
+                    'Type': t.get('transaction_type', 'expense'),
                     'Currency': t['currency'],
                     'Category': t['category'],
                     'Notes': t.get('notes', '')[:50] + '...' if len(t.get('notes', '')) > 50 else t.get('notes', ''),
@@ -108,7 +110,7 @@ try:
             st.metric("Total Entries", len(filtered_trans))
         
         with col2:
-            total_amount = sum(t['amount'] for t in filtered_trans)
+            total_amount = sum(t.get('income', 0) - t.get('expense', 0) for t in filtered_trans)
             st.metric("Total Amount", f"PKR {total_amount:,.2f}")
         
         with col3:

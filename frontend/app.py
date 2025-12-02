@@ -142,14 +142,14 @@ def main():
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #666;">
-        <p>Made by MSF</p>
+        <p>Built with ❤️ using FastAPI + Streamlit + Google Gemini AI</p>
     </div>
     """, unsafe_allow_html=True)
 
 def get_total_entries():
     """Get total number of entries"""
     try:
-        response = requests.get(f"{API_URL}/transactions")
+        response = requests.get(f"{API_URL}/transactions?limit=10000")
         if response.status_code == 200:
             return len(response.json())
     except:
@@ -159,7 +159,7 @@ def get_total_entries():
 def get_needs_review_count():
     """Get count of entries needing review"""
     try:
-        response = requests.get(f"{API_URL}/transactions?needs_review=true")
+        response = requests.get(f"{API_URL}/transactions?needs_review=true&limit=10000")
         if response.status_code == 200:
             return len(response.json())
     except:
@@ -169,7 +169,7 @@ def get_needs_review_count():
 def get_duplicate_count():
     """Get count of duplicate entries"""
     try:
-        response = requests.get(f"{API_URL}/transactions")
+        response = requests.get(f"{API_URL}/transactions?limit=10000")
         if response.status_code == 200:
             entries = response.json()
             return sum(1 for e in entries if e.get("is_duplicate", False))

@@ -27,7 +27,9 @@ class Exporter:
             flat_entry = {
                 "Date": entry.get("date"),
                 "Vendor": entry.get("vendor"),
-                "Amount": entry.get("amount"),
+                "Income": entry.get("income", 0.0),
+                "Expense": entry.get("expense", 0.0),
+                "Type": entry.get("transaction_type", "expense"),
                 "Currency": entry.get("currency"),
                 "Category": entry.get("category"),
                 "Notes": entry.get("notes", ""),
@@ -38,6 +40,22 @@ class Exporter:
             flat_entries.append(flat_entry)
         
         df = pd.DataFrame(flat_entries)
+        
+        # Add summary row
+        summary = {
+            "Date": "TOTAL",
+            "Vendor": "",
+            "Income": df["Income"].sum(),
+            "Expense": df["Expense"].sum(),
+            "Type": "",
+            "Currency": "PKR",
+            "Category": "",
+            "Notes": f"Balance: {df['Income'].sum() - df['Expense'].sum()}",
+            "Source File": "",
+            "Needs Review": "",
+            "Is Duplicate": ""
+        }
+        df = pd.concat([df, pd.DataFrame([summary])], ignore_index=True)
         
         # Save to file
         file_path = EXPORT_DIR / filename
@@ -60,7 +78,9 @@ class Exporter:
             flat_entry = {
                 "Date": entry.get("date"),
                 "Vendor": entry.get("vendor"),
-                "Amount": entry.get("amount"),
+                "Income": entry.get("income", 0.0),
+                "Expense": entry.get("expense", 0.0),
+                "Type": entry.get("transaction_type", "expense"),
                 "Currency": entry.get("currency"),
                 "Category": entry.get("category"),
                 "Notes": entry.get("notes", ""),
@@ -76,20 +96,35 @@ class Exporter:
         
         df = pd.DataFrame(flat_entries)
         
+        # Add summary
+        summary = {
+            "Date": "TOTAL",
+            "Vendor": "",
+            "Income": df["Income"].sum(),
+            "Expense": df["Expense"].sum(),
+            "Type": "Balance",
+            "Currency": "PKR",
+            "Category": "",
+            "Notes": f"Net: {df['Income'].sum() - df['Expense'].sum()}"
+        }
+        summary_df = pd.DataFrame([summary])
+        
         # Save to file
         file_path = EXPORT_DIR / filename
         
         with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='Transactions', index=False)
+            summary_df.to_excel(writer, sheet_name='Summary', index=False)
             
             # Auto-adjust column widths
-            worksheet = writer.sheets['Transactions']
-            for idx, col in enumerate(df.columns):
-                max_length = max(
-                    df[col].astype(str).apply(len).max(),
-                    len(col)
-                ) + 2
-                worksheet.column_dimensions[chr(65 + idx)].width = min(max_length, 50)
+            for sheet_name in writer.sheets:
+                worksheet = writer.sheets[sheet_name]
+                for idx, col in enumerate(df.columns if sheet_name == 'Transactions' else summary_df.columns):
+                    max_length = max(
+                        df[col].astype(str).apply(len).max() if sheet_name == 'Transactions' else len(str(col)),
+                        len(col)
+                    ) + 2
+                    worksheet.column_dimensions[chr(65 + idx)].width = min(max_length, 50)
         
         return str(file_path)
     
@@ -142,6 +177,8 @@ class Exporter:
             return {
                 "total_entries": 0,
                 "total_amount": 0,
+                "total_income": 0,
+                "total_expense": 0,
                 "categories": {},
                 "needs_review": 0,
                 "duplicates": 0
@@ -151,9 +188,14 @@ class Exporter:
         
         category_counts = df.groupby('category').size().to_dict() if 'category' in df else {}
         
+        total_income = df['income'].sum() if 'income' in df else 0
+        total_expense = df['expense'].sum() if 'expense' in df else 0
+        
         return {
             "total_entries": len(entries),
-            "total_amount": df['amount'].sum() if 'amount' in df else 0,
+            "total_income": total_income,
+            "total_expense": total_expense,
+            "total_amount": total_income - total_expense,
             "categories": category_counts,
             "needs_review": df['needs_review'].sum() if 'needs_review' in df else 0,
             "duplicates": df['is_duplicate'].sum() if 'is_duplicate' in df else 0,

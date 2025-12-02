@@ -6,6 +6,8 @@ Upload and process receipts, invoices, and documents
 import streamlit as st
 import requests
 from pathlib import Path
+from datetime import datetime
+import time
 
 st.set_page_config(page_title="Upload Files", page_icon="📤", layout="wide")
 
@@ -17,7 +19,7 @@ st.markdown("""
 Upload your receipts, invoices, screenshots, or CSV/Excel files.  
 The AI will automatically extract and structure the data.
 
-**🌍 Multi-Language Support:** Works with Different Languages!
+**🌍 Multi-Language Support:** Works with English, Urdu (اردو), Roman Urdu, and Hinglish!
 """)
 
 # Language examples
@@ -33,6 +35,54 @@ with st.expander("📝 See language examples"):
     
     The AI understands context and translates automatically! 🎯
     """)
+
+# Manual Entry Section
+st.markdown("---")
+st.markdown("### ✍️ Manual Transaction Entry")
+st.info("💡 Tip: You can add transactions by typing, no image needed!")
+
+with st.expander("➕ Add Transaction Manually", expanded=False):
+    with st.form("manual_entry"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            manual_date = st.date_input("Date", datetime.now())
+            manual_amount = st.number_input("Amount", min_value=0.0, step=100.0, value=0.0)
+            manual_type = st.selectbox("Type", ["expense", "income"])
+        
+        with col2:
+            manual_category = st.selectbox(
+                "Category", 
+                ["Food", "Fuel", "Transport", "Utilities", "Rent", "Office", "Salary", "Other"]
+            )
+            manual_description = st.text_area("Description", height=80, placeholder="e.g., Lunch at KFC, Salary received, etc.")
+        
+        if st.form_submit_button("💾 Add Transaction", type="primary", use_container_width=True):
+            if manual_amount > 0 and manual_description:
+                try:
+                    response = requests.post(
+                        f"{API_URL}/transactions/manual",
+                        params={
+                            "date": manual_date.strftime("%Y-%m-%d"),
+                            "description": manual_description,
+                            "amount": manual_amount,
+                            "transaction_type": manual_type,
+                            "category": manual_category
+                        }
+                    )
+                    
+                    if response.status_code == 200:
+                        st.success("✅ Transaction added successfully!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Error: {response.text}")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+            else:
+                st.warning("⚠️ Please enter amount and description")
+
+st.markdown("---")
 
 # File uploader
 uploaded_files = st.file_uploader(
@@ -90,13 +140,19 @@ if uploaded_files:
                         st.markdown("### ✅ Extracted Transactions")
                         
                         for i, entry in enumerate(result['entries'], 1):
-                            with st.expander(f"Entry {i}: {entry['vendor']} - {entry['amount']} {entry['currency']}"):
+                            # Determine if income or expense
+                            is_income = entry.get('transaction_type') == 'income'
+                            amount_display = entry.get('income') if is_income else entry.get('expense')
+                            amount_label = "💰 Income" if is_income else "💸 Expense"
+                            
+                            with st.expander(f"Entry {i}: {entry['vendor']} - {amount_label} {amount_display} {entry['currency']}"):
                                 col1, col2 = st.columns(2)
                                 
                                 with col1:
                                     st.write("**Date:**", entry['date'])
                                     st.write("**Vendor:**", entry['vendor'])
-                                    st.write("**Amount:**", f"{entry['amount']} {entry['currency']}")
+                                    st.write(f"**{amount_label}:**", f"{amount_display} {entry['currency']}")
+                                    st.write("**Type:**", "💰 Income" if is_income else "💸 Expense")
                                     st.write("**Category:**", entry['category'])
                                     st.write("**Notes:**", entry.get('notes', 'N/A'))
                                     

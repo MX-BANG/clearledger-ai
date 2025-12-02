@@ -48,22 +48,25 @@ Detected Language: {detected_language}
 Instructions:
 1. Translate/understand the text if needed
 2. Extract transaction information
-3. Common patterns to look for:
-   - "pay kiye" / "paid" = payment made
-   - "transfer" / "bheja" = money sent
-   - "received" / "mila" = money received
-   - Amount followed by person's name = payment to that person
-   - Food items, restaurant names = Food category
-   - Petrol, fuel, PSO, Shell = Fuel category
-   - Uber, Careem, taxi = Transport category
+3. **CRITICAL: Determine if this is INCOME or EXPENSE**
+   - INCOME keywords: received, salary, payment received, credited, income, mila, aya, deposit, refund
+   - EXPENSE keywords: paid, spent, purchased, transferred, debited, expense, diya, bheja, kharcha, buy
+4. Common patterns:
+   - "pay kiye" / "paid" = EXPENSE
+   - "transfer" / "bheja" = EXPENSE
+   - "received" / "mila" = INCOME
+   - "salary" = INCOME
+   - Receipts from stores = EXPENSE
+   - Money coming to you = INCOME
 
 Return ONLY valid JSON with these exact fields:
-{{"date":"YYYY-MM-DD","vendor":"name","amount":number,"currency":"{DEFAULT_CURRENCY}","category":"Food|Fuel|Transport|Utilities|Rent|Office|Other","notes":"brief description in English","confidence":{{"vendor":0.9,"amount":0.9,"date":0.9,"category":0.9}}}}
+{{"date":"YYYY-MM-DD","vendor":"name","amount":number,"transaction_type":"income|expense","currency":"{DEFAULT_CURRENCY}","category":"Food|Fuel|Transport|Utilities|Rent|Office|Salary|Other","notes":"brief description in English","confidence":{{"vendor":0.9,"amount":0.9,"date":0.9,"category":0.9,"transaction_type":0.9}}}}
 
 Rules: 
 - If date is unclear, use today's date and set confidence.date to 0.4
 - Extract amount (look for numbers)
 - Identify vendor/person name
+- **MUST classify as income or expense**
 - Translate notes to English
 - Be conservative with confidence scores
 """
@@ -170,6 +173,7 @@ Look for columns like: date, vendor/merchant/name, amount/price/total, descripti
             "date": datetime.now().strftime("%Y-%m-%d"),
             "vendor": "Unknown",
             "amount": 0.0,
+            "transaction_type": "expense",  # Default to expense
             "currency": DEFAULT_CURRENCY,
             "category": "Other",
             "notes": "",
@@ -177,7 +181,8 @@ Look for columns like: date, vendor/merchant/name, amount/price/total, descripti
                 "vendor": 0.5,
                 "amount": 0.5,
                 "date": 0.5,
-                "category": 0.5
+                "category": 0.5,
+                "transaction_type": 0.5
             }
         }
         
@@ -189,6 +194,19 @@ Look for columns like: date, vendor/merchant/name, amount/price/total, descripti
                 data[key] = default_value
                 if key == "date":
                     date_was_missing = True
+        
+        # Classify income vs expense if not provided
+        if "transaction_type" not in data or data["transaction_type"] not in ["income", "expense"]:
+            data["transaction_type"] = self._classify_transaction_type(raw_text, data.get("category", ""), data.get("notes", ""))
+        
+        # Split amount into income/expense
+        amount = data.get("amount", 0.0)
+        if data["transaction_type"] == "income":
+            data["income"] = amount
+            data["expense"] = 0.0
+        else:
+            data["income"] = 0.0
+            data["expense"] = amount
         
         # Check if date looks auto-filled (today's date with low confidence)
         today = datetime.now().strftime("%Y-%m-%d")
@@ -213,6 +231,26 @@ Look for columns like: date, vendor/merchant/name, amount/price/total, descripti
         )
         
         return data
+    
+    def _classify_transaction_type(self, raw_text: str, category: str, notes: str) -> str:
+        """Classify transaction as income or expense based on keywords"""
+        text_combined = f"{raw_text} {category} {notes}".lower()
+        
+        # Income keywords
+        income_keywords = ['received', 'salary', 'income', 'credited', 'deposit', 'refund', 'mila', 'aya', 'payment received']
+        
+        # Expense keywords
+        expense_keywords = ['paid', 'spent', 'purchase', 'transferred', 'debited', 'expense', 'diya', 'bheja', 'kharcha', 'buy', 'bought']
+        
+        # Check for income indicators
+        income_score = sum(1 for keyword in income_keywords if keyword in text_combined)
+        expense_score = sum(1 for keyword in expense_keywords if keyword in text_combined)
+        
+        # Default to expense unless clear income indicators
+        if income_score > expense_score:
+            return "income"
+        else:
+            return "expense"
     
     def _manual_extraction(self, raw_text: str, source_file: str) -> dict:
         """Fallback manual extraction using regex"""

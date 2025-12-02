@@ -18,10 +18,17 @@ class Transaction(Base):
     id = Column(Integer, primary_key=True, index=True)
     date = Column(String, nullable=False)
     vendor = Column(String, nullable=False)
-    amount = Column(Float, nullable=False)
+    
+    # Split amount into income and expense
+    income = Column(Float, default=0.0)
+    expense = Column(Float, default=0.0)
+    
     currency = Column(String, default="PKR")
     category = Column(String, nullable=False)
     notes = Column(Text, nullable=True)
+    
+    # Transaction type
+    transaction_type = Column(String, default="expense")  # "income" or "expense"
     
     # Confidence scores stored as JSON
     confidence_json = Column(Text, nullable=False)
@@ -45,10 +52,12 @@ class Transaction(Base):
             "id": self.id,
             "date": self.date,
             "vendor": self.vendor,
-            "amount": self.amount,
+            "income": self.income,
+            "expense": self.expense,
             "currency": self.currency,
             "category": self.category,
             "notes": self.notes,
+            "transaction_type": self.transaction_type,
             "confidence": json.loads(self.confidence_json),
             "source_file": self.source_file,
             "raw_text": self.raw_text,
@@ -57,6 +66,26 @@ class Transaction(Base):
             "needs_review": self.needs_review,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+class Balance(Base):
+    __tablename__ = "balance"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    opening_balance = Column(Float, default=0.0)
+    current_balance = Column(Float, default=0.0)
+    total_income = Column(Float, default=0.0)
+    total_expense = Column(Float, default=0.0)
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "opening_balance": self.opening_balance,
+            "current_balance": self.current_balance,
+            "total_income": self.total_income,
+            "total_expense": self.total_expense,
+            "last_updated": self.last_updated.isoformat() if self.last_updated else None
         }
 
 # Create tables

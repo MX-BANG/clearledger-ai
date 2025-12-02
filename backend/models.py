@@ -14,7 +14,9 @@ class TransactionEntry(BaseModel):
     id: Optional[int] = None
     date: str
     vendor: str
-    amount: float
+    income: float = 0.0
+    expense: float = 0.0
+    transaction_type: str = "expense"
     currency: str = "PKR"
     category: str
     notes: Optional[str] = None

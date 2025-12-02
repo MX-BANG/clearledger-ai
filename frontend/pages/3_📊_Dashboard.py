@@ -8,6 +8,7 @@ import requests
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from datetime import datetime
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 
@@ -115,38 +116,48 @@ try:
                 st.info("No data available yet")
         
         with col2:
-            st.markdown("### 🎯 Confidence Distribution")
+            st.markdown("### 💰 Income vs Expense (Monthly)")
             
-            if stats['confidence_distribution']:
-                # Prepare data
-                conf_df = pd.DataFrame(
-                    list(stats['confidence_distribution'].items()),
-                    columns=['Confidence Level', 'Count']
-                )
-                
-                # Create bar chart
-                fig = px.bar(
-                    conf_df,
-                    x='Confidence Level',
-                    y='Count',
-                    title='AI Confidence Levels',
-                    color='Confidence Level',
-                    color_discrete_map={
-                        'High': '#28a745',
-                        'Medium': '#ffc107',
-                        'Low': '#dc3545'
-                    }
-                )
-                
-                fig.update_layout(showlegend=False)
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Percentage breakdown
-                total = sum(stats['confidence_distribution'].values())
-                with st.expander("View percentages"):
-                    for level, count in stats['confidence_distribution'].items():
-                        percentage = (count / total * 100) if total > 0 else 0
-                        st.write(f"**{level}:** {count} ({percentage:.1f}%)")
+            if stats['total_entries'] > 0:
+                # Get all transactions
+                trans_response = requests.get(f"{API_URL}/transactions?limit=1000")
+                if trans_response.status_code == 200:
+                    all_trans = trans_response.json()
+                    
+                    if all_trans:
+                        # Group by month
+                        df = pd.DataFrame(all_trans)
+                        df['date'] = pd.to_datetime(df['date'])
+                        df['month'] = df['date'].dt.strftime('%b %Y')
+                        
+                        monthly = df.groupby('month').agg({
+                            'income': 'sum',
+                            'expense': 'sum'
+                        }).reset_index()
+                        
+                        # Create bar chart
+                        fig = go.Figure(data=[
+                            go.Bar(name='💰 Income', x=monthly['month'], y=monthly['income'], marker_color='#28a745'),
+                            go.Bar(name='💸 Expense', x=monthly['month'], y=monthly['expense'], marker_color='#dc3545')
+                        ])
+                        
+                        fig.update_layout(
+                            barmode='group',
+                            title='Monthly Income vs Expense',
+                            xaxis_title='Month',
+                            yaxis_title='Amount (PKR)',
+                            legend=dict(x=0.01, y=0.99)
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Show monthly summary table
+                        with st.expander("📋 View monthly breakdown"):
+                            monthly['Net'] = monthly['income'] - monthly['expense']
+                            st.dataframe(monthly, use_container_width=True)
+                    else:
+                        st.info("No transaction data yet")
+                else:
+                    st.error("Failed to load transactions")
             else:
                 st.info("No data available yet")
         

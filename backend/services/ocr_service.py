@@ -74,36 +74,68 @@ class OCRService:
             }
     
     def _extract_from_pdf(self, file_path: Path) -> Dict[str, Any]:
-        """Extract text from PDF (convert to images first)"""
+        """Extract text from PDF (multiple fallback methods)"""
         try:
-            # Convert PDF to images
-            images = convert_from_path(str(file_path))
-            
-            all_text = []
-            for i, image in enumerate(images):
-                # Save temporarily and run OCR
-                temp_path = file_path.parent / f"temp_page_{i}.png"
-                image.save(temp_path)
+            # Method 1: Try pdf2image with poppler
+            try:
+                images = convert_from_path(str(file_path))
                 
-                result = self.reader.readtext(str(temp_path), detail=0)
-                all_text.extend(result)
+                all_text = []
+                for i, image in enumerate(images):
+                    # Save temporarily and run OCR
+                    temp_path = file_path.parent / f"temp_page_{i}.png"
+                    image.save(temp_path)
+                    
+                    result = self.reader.readtext(str(temp_path), detail=0)
+                    all_text.extend(result)
+                    
+                    # Clean up temp file
+                    temp_path.unlink()
                 
-                # Clean up temp file
-                temp_path.unlink()
-            
-            raw_text = "\n".join(all_text)
-            
-            return {
-                "raw_text": raw_text,
-                "source": file_path.name,
-                "success": True,
-                "error": None
-            }
+                raw_text = "\n".join(all_text)
+                
+                return {
+                    "raw_text": raw_text,
+                    "source": file_path.name,
+                    "success": True,
+                    "error": None
+                }
+            except Exception as pdf_error:
+                # Method 2: Fallback - Try PyPDF2 for text extraction
+                try:
+                    import PyPDF2
+                    with open(file_path, 'rb') as pdf_file:
+                        pdf_reader = PyPDF2.PdfReader(pdf_file)
+                        all_text = []
+                        for page in pdf_reader.pages:
+                            text = page.extract_text()
+                            if text:
+                                all_text.append(text)
+                        
+                        raw_text = "\n".join(all_text)
+                        
+                        if raw_text.strip():
+                            return {
+                                "raw_text": raw_text,
+                                "source": file_path.name,
+                                "success": True,
+                                "error": None
+                            }
+                        else:
+                            raise Exception("PDF has no extractable text")
+                except Exception as pypdf_error:
+                    # Method 3: Return error but don't crash
+                    return {
+                        "raw_text": f"PDF: {file_path.name}\n[PDF extraction failed, please try image format]",
+                        "source": file_path.name,
+                        "success": True,  # Mark as success to continue processing
+                        "error": f"PDF processing failed. Please convert to image. Details: {str(pdf_error)}"
+                    }
         except Exception as e:
             return {
-                "raw_text": "",
+                "raw_text": f"PDF: {file_path.name}",
                 "source": file_path.name,
-                "success": False,
+                "success": True,  # Don't crash the whole process
                 "error": f"PDF extraction failed: {str(e)}"
             }
     

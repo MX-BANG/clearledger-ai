@@ -53,8 +53,11 @@ try:
             st.metric("Duplicates", duplicates)
         
         with col3:
-            total_amount = sum(t['amount'] for t in transactions)
-            st.metric("Total Amount", f"{total_amount:,.0f} PKR")
+            # Calculate total amount (income - expense)
+            total_income = sum(t.get('income', 0) for t in transactions)
+            total_expense = sum(t.get('expense', 0) for t in transactions)
+            net_amount = total_income - total_expense
+            st.metric("Net Amount", f"{net_amount:,.0f} PKR")
         
         with col4:
             categories = len(set(t['category'] for t in transactions))
@@ -71,6 +74,10 @@ try:
         
         # Display transactions
         for i, transaction in enumerate(transactions):
+            # Get amount based on transaction type
+            trans_type = transaction.get('transaction_type', 'expense')
+            amount = transaction.get('income', 0) if trans_type == 'income' else transaction.get('expense', 0)
+            
             # Determine card color
             card_style = "background-color: #fff3cd;" if transaction.get('needs_review') else "background-color: #f8f9fa;"
             
@@ -98,15 +105,26 @@ try:
                             new_vendor = st.text_input("Vendor", transaction['vendor'])
                         
                         with col2:
-                            new_amount = st.number_input("Amount", value=float(transaction['amount']), min_value=0.0)
-                            new_currency = st.text_input("Currency", transaction['currency'])
+                            # Transaction type
+                            current_type = transaction.get('transaction_type', 'expense')
+                            new_type = st.selectbox(
+                                "Type", 
+                                ["expense", "income"], 
+                                index=0 if current_type == "expense" else 1,
+                                key=f"type_{transaction['id']}"
+                            )
+                            
+                            # Amount based on type
+                            current_amount = transaction.get('income', 0) if new_type == 'income' else transaction.get('expense', 0)
+                            new_amount = st.number_input("Amount", value=float(current_amount), min_value=0.0, key=f"amt_{transaction['id']}")
+                            new_currency = st.text_input("Currency", transaction['currency'], key=f"curr_{transaction['id']}")
                         
                         with col3:
-                            categories = ["Food", "Fuel", "Transport", "Utilities", "Rent", "Office", "Other"]
+                            categories = ["Food", "Fuel", "Transport", "Utilities", "Rent", "Office", "Salary", "Other"]
                             current_cat = transaction['category']
                             cat_index = categories.index(current_cat) if current_cat in categories else 0
-                            new_category = st.selectbox("Category", categories, index=cat_index)
-                            new_notes = st.text_area("Notes", transaction.get('notes', ''), height=50)
+                            new_category = st.selectbox("Category", categories, index=cat_index, key=f"cat_{transaction['id']}")
+                            new_notes = st.text_area("Notes", transaction.get('notes', ''), height=50, key=f"notes_{transaction['id']}")
                         
                         # Action buttons
                         col1, col2, col3 = st.columns(3)
@@ -127,33 +145,42 @@ try:
                                 "date": new_date,
                                 "vendor": new_vendor,
                                 "amount": new_amount,
+                                "transaction_type": new_type,
                                 "currency": new_currency,
                                 "category": new_category,
                                 "notes": new_notes,
                                 "needs_review": False
                             }
                             
-                            update_response = requests.put(
-                                f"{API_URL}/transactions/{transaction['id']}",
-                                json=updated_data
-                            )
-                            
-                            if update_response.status_code == 200:
-                                st.success("✅ Transaction updated!")
-                                st.rerun()
-                            else:
-                                st.error("❌ Update failed")
+                            try:
+                                update_response = requests.put(
+                                    f"{API_URL}/transactions/{transaction['id']}",
+                                    json=updated_data
+                                )
+                                
+                                if update_response.status_code == 200:
+                                    st.success("✅ Transaction updated!")
+                                    time.sleep(0.5)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Update failed: {update_response.text}")
+                            except Exception as e:
+                                st.error(f"❌ Error: {str(e)}")
                         
                         if delete_btn:
-                            delete_response = requests.delete(
-                                f"{API_URL}/transactions/{transaction['id']}"
-                            )
-                            
-                            if delete_response.status_code == 200:
-                                st.success("🗑️ Transaction deleted!")
-                                st.rerun()
-                            else:
-                                st.error("❌ Delete failed")
+                            try:
+                                delete_response = requests.delete(
+                                    f"{API_URL}/transactions/{transaction['id']}"
+                                )
+                                
+                                if delete_response.status_code == 200:
+                                    st.success("🗑️ Transaction deleted!")
+                                    time.sleep(0.5)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Delete failed: {delete_response.text}")
+                            except Exception as e:
+                                st.error(f"❌ Error: {str(e)}")
                         
                         if transaction.get('is_duplicate') and keep_btn:
                             keep_response = requests.put(
@@ -174,7 +201,12 @@ try:
                         st.write("**Vendor:**", transaction['vendor'])
                     
                     with col2:
-                        st.write("**Amount:**", f"{transaction['amount']} {transaction['currency']}")
+                        # Show income or expense
+                        trans_type = transaction.get('transaction_type', 'expense')
+                        if trans_type == 'income':
+                            st.write("**💰 Income:**", f"{transaction.get('income', 0)} {transaction['currency']}")
+                        else:
+                            st.write("**💸 Expense:**", f"{transaction.get('expense', 0)} {transaction['currency']}")
                         st.write("**Category:**", transaction['category'])
                     
                     with col3:
