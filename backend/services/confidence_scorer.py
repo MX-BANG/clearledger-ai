@@ -51,7 +51,8 @@ class ConfidenceScorer:
         needs_review = (
             len(flags) > 0 or
             overall_confidence < 0.7 or
-            entry.get("amount", 0) == 0
+            entry.get("amount", 0) == 0 or
+            confidence.get("date", 1.0) < 0.5
         )
         
         return {
