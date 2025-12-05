@@ -20,6 +20,7 @@ from backend.services.confidence_scorer import ConfidenceScorer
 from backend.services.duplicate_detector import DuplicateDetector
 from backend.services.categorizer import Categorizer
 from backend.services.exporter import Exporter
+from backend.services.risk_detector import RiskDetector
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -591,6 +592,18 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
         category_breakdown=category_breakdown,
         confidence_distribution=confidence_dist
     )
+
+@app.get("/risk-analysis")
+async def analyze_risks(db: Session = Depends(get_db)):
+    """Analyze transactions for financial risks and generate alerts"""
+
+    transactions = db.query(Transaction).all()
+    entries = [TransactionEntry(**t.to_dict()) for t in transactions]
+
+    risk_detector = RiskDetector()
+    result = risk_detector.analyze_transactions(entries)
+
+    return result
 
 if __name__ == "__main__":
     import uvicorn
