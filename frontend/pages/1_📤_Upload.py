@@ -29,9 +29,9 @@ with st.expander("📝 See language examples"):
     
     **Roman Urdu:** "200 usko pay kiye khaane ke" → Detected as: 200 PKR paid for food
     
-    **Urdu:** "5000 روپے سدرا کو بھیجے" → Detected as: 5000 PKR sent to Sidra
+    **Urdu:** "5000 روپے سدرا کو بھیجے" → Detected as: 5000 PKR sent to Yumna
     
-    **Mixed:** "5,000 transferred to Sidra by Sadapay" → Detected as: Transfer to Sidra
+    **Mixed:** "5,000 transferred to Ayesha by Sadapay" → Detected as: Transfer to Sidra
     
     The AI understands context and translates automatically! 🎯
     """)
@@ -231,3 +231,5 @@ else:
     - Upload files in small batches (5-10 at a time)
     - Review AI-extracted data before exporting
     """)
+
+    
