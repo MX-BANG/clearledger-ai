@@ -94,10 +94,24 @@ Rules:
             
             # Clean up markdown code blocks if present
             result_text = re.sub(r'```json\s*|\s*```', '', result_text)
-            
+
             # Parse JSON
-            structured_data = json.loads(result_text)
-            
+            parsed_result = json.loads(result_text)
+
+            # Handle case where AI returns a list instead of dict
+            if isinstance(parsed_result, list):
+                if len(parsed_result) > 0 and isinstance(parsed_result[0], dict):
+                    # Take the first item if it's a list of dicts
+                    structured_data = parsed_result[0]
+                else:
+                    # Invalid list response, fall back to manual extraction
+                    return self._manual_extraction(raw_text, source_file)
+            elif isinstance(parsed_result, dict):
+                structured_data = parsed_result
+            else:
+                # Neither list nor dict, fall back to manual extraction
+                return self._manual_extraction(raw_text, source_file)
+
             # Validate and set defaults
             structured_data = self._validate_and_fix(structured_data, raw_text, source_file)
             
@@ -173,7 +187,24 @@ Rules:
             response = self.model.generate_content(prompt)
             result_text = response.text.strip()
             result_text = re.sub(r'```json\s*|\s*```', '', result_text)
-            structured_data = json.loads(result_text)
+
+            # Parse JSON
+            parsed_result = json.loads(result_text)
+
+            # Handle case where AI returns a list instead of dict
+            if isinstance(parsed_result, list):
+                if len(parsed_result) > 0 and isinstance(parsed_result[0], dict):
+                    # Take the first item if it's a list of dicts
+                    structured_data = parsed_result[0]
+                else:
+                    # Invalid list response, fall back to empty result
+                    return self._get_empty_result(source_file, f"CSV parsing failed: Invalid AI response format")
+            elif isinstance(parsed_result, dict):
+                structured_data = parsed_result
+            else:
+                # Neither list nor dict, fall back to empty result
+                return self._get_empty_result(source_file, f"CSV parsing failed: Invalid AI response format")
+
             return self._validate_and_fix(structured_data, text[:500], source_file)
         except Exception as e:
             return self._get_empty_result(source_file, f"CSV parsing failed: {str(e)}")
@@ -226,10 +257,6 @@ Rules:
         if data["date"] == today and data["confidence"]["date"] < 0.6:
             date_was_missing = True
             data["confidence"]["date"] = 0.3  # Lower confidence for assumed date
-            if data["notes"]:
-                data["notes"] = f"[Date assumed: {today}] {data['notes']}"
-            else:
-                data["notes"] = f"Date not found in image, assumed today's date ({today})"
         
         # Add metadata
         data["source_file"] = source_file
