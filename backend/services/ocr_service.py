@@ -13,8 +13,13 @@ from pdf2image import convert_from_path
 
 class OCRService:
     def __init__(self):
-        # Initialize EasyOCR (English and Urdu for Pakistan)
-        self.reader = easyocr.Reader(['en'], gpu=False)
+        # Initialize multiple EasyOCR readers for different language groups
+        # Latin script languages (English, Spanish)
+        self.latin_reader = easyocr.Reader(['en', 'es'], gpu=False)
+        # Arabic script languages (Urdu)
+        self.arabic_reader = easyocr.Reader(['en', 'ur'], gpu=False)
+        # Devanagari script languages (Hindi)
+        self.devanagari_reader = easyocr.Reader(['en', 'hi'], gpu=False)
     
     def extract_text(self, file_path: Path) -> Dict[str, Any]:
         """
@@ -53,12 +58,38 @@ class OCRService:
             }
     
     def _extract_from_image(self, file_path: Path) -> Dict[str, Any]:
-        """Extract text from image using EasyOCR"""
+        """Extract text from image using multiple EasyOCR readers for multilingual support"""
         try:
-            # Use EasyOCR
-            result = self.reader.readtext(str(file_path), detail=0)
-            raw_text = "\n".join(result)
-            
+            all_text = []
+
+            # Try Latin script reader (English, Spanish)
+            try:
+                result = self.latin_reader.readtext(str(file_path), detail=0)
+                if result:
+                    all_text.extend(result)
+            except:
+                pass
+
+            # Try Arabic script reader (Urdu)
+            try:
+                result = self.arabic_reader.readtext(str(file_path), detail=0)
+                if result:
+                    all_text.extend(result)
+            except:
+                pass
+
+            # Try Devanagari script reader (Hindi)
+            try:
+                result = self.devanagari_reader.readtext(str(file_path), detail=0)
+                if result:
+                    all_text.extend(result)
+            except:
+                pass
+
+            # Remove duplicates and join
+            unique_text = list(set(all_text))
+            raw_text = "\n".join(unique_text)
+
             return {
                 "raw_text": raw_text,
                 "source": file_path.name,
@@ -85,10 +116,38 @@ class OCRService:
                     # Save temporarily and run OCR
                     temp_path = file_path.parent / f"temp_page_{i}.png"
                     image.save(temp_path)
-                    
-                    result = self.reader.readtext(str(temp_path), detail=0)
-                    all_text.extend(result)
-                    
+
+                    # Try multiple readers for multilingual support
+                    page_text = []
+
+                    # Try Latin script reader (English, Spanish)
+                    try:
+                        result = self.latin_reader.readtext(str(temp_path), detail=0)
+                        if result:
+                            page_text.extend(result)
+                    except:
+                        pass
+
+                    # Try Arabic script reader (Urdu)
+                    try:
+                        result = self.arabic_reader.readtext(str(temp_path), detail=0)
+                        if result:
+                            page_text.extend(result)
+                    except:
+                        pass
+
+                    # Try Devanagari script reader (Hindi)
+                    try:
+                        result = self.devanagari_reader.readtext(str(temp_path), detail=0)
+                        if result:
+                            page_text.extend(result)
+                    except:
+                        pass
+
+                    # Remove duplicates for this page
+                    unique_page_text = list(set(page_text))
+                    all_text.extend(unique_page_text)
+
                     # Clean up temp file
                     temp_path.unlink()
                 
