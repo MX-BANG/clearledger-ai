@@ -83,8 +83,9 @@ def main():
     **How to use:**
     1. 📤 Upload your receipts/invoices
     2. ✏️ Review and edit extracted data
-    3. 📊 View dashboard statistics
-    4. 💾 Export clean data
+    3. 📊 View dashboard statistics                
+    4. 💰 Add opening balance and view your remaining balance
+    5. 💾 Export clean data
     """)
     
     # Main content
@@ -141,8 +142,15 @@ def main():
     # Footer
     st.markdown("---")
     st.markdown("""
-    <div style="text-align: center; color: #666;">
-        <p>Built with ❤️ using FastAPI + Streamlit + Google Gemini AI</p>
+    <div style="text-align: center; color: #CCC;">
+        <p>I, Moiz Ali Siddiqui, built this AI ✨</p>
+        <p>But I would be lying if I said I made it alone 🤝</p>
+        <p>I would like to thank my teammates who made this possible 🙌</p>
+        <p>ChatGPT — without you, my idea would be left unstructured and raw 💡</p>
+        <p>Claude — thank you for giving me the framework 🧩</p>
+        <p>BlackBox — thank you for fixing the errors even I could not find 🛠️</p>
+        <p>Last but not the least, Gemini — thank you for giving me the API key 🔑</p>
+
     </div>
     """, unsafe_allow_html=True)
 
