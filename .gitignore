@@ -28,6 +28,8 @@ ENV/
 
 # Environment variables
 .env
+.env.production
+.env.local
 
 # Database
 database/
@@ -56,6 +58,7 @@ Thumbs.db
 
 # Logs
 *.log
+logs/
 
 # Streamlit
 .streamlit/
@@ -70,5 +73,6 @@ Thumbs.db
 temp_*
 tmp_*
 
-.env
-*.env
+# Deployment
+.vercel
+.netlify
