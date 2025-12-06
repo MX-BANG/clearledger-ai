@@ -2,7 +2,7 @@
 Upload Page - MVP 1 & 2
 Upload and process receipts, invoices, and documents
 """
-
+import os
 import streamlit as st
 import requests
 from pathlib import Path
@@ -11,7 +11,7 @@ import time
 
 st.set_page_config(page_title="Upload Files", page_icon="📤", layout="wide")
 
-API_URL = "http://localhost:8000"
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.title("📤 Upload Documents")
 

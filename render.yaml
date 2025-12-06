@@ -1,12 +1,4 @@
 services:
-  # PostgreSQL Database
-  - type: pserv
-    name: bookkeeping-db
-    env: docker
-    plan: free
-    region: singapore
-    ipAllowList: []
-
   # Backend API Service
   - type: web
     name: bookkeeping-api
@@ -19,9 +11,7 @@ services:
     healthCheckPath: /
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: bookkeeping-db
-          property: connectionString
+        sync: false  # You'll add this manually from Supabase
       - key: GEMINI_API_KEY
         sync: false
       - key: PYTHON_VERSION
@@ -44,10 +34,3 @@ services:
           property: host
       - key: PYTHON_VERSION
         value: 3.10.9
-
-databases:
-  - name: bookkeeping-db
-    databaseName: bookkeeping
-    user: bookkeeping_user
-    plan: free
-    region: singapore

@@ -2,7 +2,7 @@
 Export Page - MVP 7: Clean Data Exporter
 Export processed data in various formats
 """
-
+import os
 import streamlit as st
 import requests
 import pandas as pd
@@ -10,7 +10,7 @@ from pathlib import Path
 
 st.set_page_config(page_title="Export Data", page_icon="💾", layout="wide")
 
-API_URL = "http://localhost:8000"
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.title("💾 Export Clean Data")
 

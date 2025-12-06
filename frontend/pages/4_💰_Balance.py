@@ -2,13 +2,13 @@
 Balance Management Page
 Set opening balance and view financial summary
 """
-
+import os
 import streamlit as st
 import requests
 
 st.set_page_config(page_title="Balance Management", page_icon="💰", layout="wide")
 
-API_URL = "http://localhost:8000"
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.title("💰 Balance Management")
 

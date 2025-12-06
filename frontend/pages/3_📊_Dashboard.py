@@ -2,7 +2,7 @@
 Dashboard Page - MVP 8: Processing Summary Dashboard
 View statistics and analytics
 """
-
+import os
 import streamlit as st
 import requests
 import pandas as pd
@@ -12,7 +12,7 @@ from datetime import datetime
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 
-API_URL = "http://localhost:8000"
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.title("📊 Analytics Dashboard")
 

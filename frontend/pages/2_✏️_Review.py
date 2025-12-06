@@ -2,7 +2,7 @@
 Review Page - MVP 6: Human-in-the-Loop Editor
 Review and edit extracted transactions
 """
-
+import os
 import streamlit as st
 import requests
 import pandas as pd
@@ -10,7 +10,7 @@ import time
 
 st.set_page_config(page_title="Review Transactions", page_icon="✏️", layout="wide")
 
-API_URL = "http://localhost:8000"
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.title("✏️ Review & Edit Transactions")
 

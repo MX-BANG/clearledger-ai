@@ -2,7 +2,7 @@
 Streamlit Frontend - Main Application
 AI Bookkeeping Cleanup Engine Interface
 """
-
+import os
 import streamlit as st
 import requests
 import pandas as pd
@@ -54,7 +54,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # API Configuration
-API_URL = "http://localhost:8000"
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 def check_api_health():
     """Check if backend API is running"""

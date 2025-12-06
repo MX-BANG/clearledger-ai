@@ -10,9 +10,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 DATABASE_DIR = BASE_DIR / "database"
 
-# Create directories if they don't exist
-for dir_path in [DATA_DIR, DATABASE_DIR]:
-    dir_path.mkdir(parents=True, exist_ok=True)
+# Create directories if they don't exist (only in local mode)
+if not os.getenv("DATABASE_URL"):  # Local development
+    for dir_path in [DATA_DIR, DATABASE_DIR]:
+        dir_path.mkdir(parents=True, exist_ok=True)
+else:  # Production
+    # In production, use /tmp for temporary storage
+    DATA_DIR = Path("/tmp/data")
+    DATABASE_DIR = Path("/tmp/database")
+    for dir_path in [DATA_DIR, DATABASE_DIR]:
+        dir_path.mkdir(parents=True, exist_ok=True)
 
 # API Keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")

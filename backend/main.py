@@ -10,8 +10,14 @@ from typing import List
 import shutil
 from pathlib import Path
 import json
-
-from backend.database import init_db, get_db, Transaction, Balance
+# Use cloud database for production, fallback to local for development
+import os
+if os.getenv("DATABASE_URL"):
+    from backend.database_cloud import init_db, get_db, Transaction, Balance
+    print("✅ Using PostgreSQL (Production)")
+else:
+    from backend.database import init_db, get_db, Transaction, Balance
+    print("⚠️ Using SQLite (Local Development)")
 from backend.config import UPLOAD_DIR, ALLOWED_EXTENSIONS
 from backend.models import TransactionEntry, BatchProcessingResult, ExportRequest, DashboardStats
 from backend.services.ocr_service import OCRService
